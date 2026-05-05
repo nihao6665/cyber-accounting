@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>赛博记账</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: linear-gradient(135deg, #0a0a1a, #1a0a2e); min-height: 100vh; color: #e0e0ff; }
+        #particles { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+        .container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; font-size: 2.5rem; background: linear-gradient(90deg, #00ffff, #ff00ff, #00ffff); background-size: 200% auto; -webkit-background-clip: text; -webkit-text-fill-color: transparent; animation: shift 3s ease infinite; }
+        @keyframes shift { 0%,100%{background-position:0%} 50%{background-position:200%} }
+        .input-section { background: rgba(20,20,50,0.8); border: 1px solid #00ffff33; border-radius: 16px; padding: 25px; margin-bottom: 30px; }
+        .input-row { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 15px; }
+        .input-group input, .input-group select { padding: 12px; background: rgba(10,10,30,0.8); border: 1px solid #ff00ff44; border-radius: 8px; color: #e0e0ff; }
+        .btn-add { width: 100%; padding: 15px; background: linear-gradient(135deg, rgba(0,255,255,0.2), rgba(255,0,255,0.2)); border: 2px solid #00ffff; border-radius: 12px; color: #00ffff; font-weight: bold; cursor: pointer; transition: all 0.3s; }
+        .btn-add:hover { box-shadow: 0 0 30px rgba(0,255,255,0.5); }
+        .btn-export { width: 100%; padding: 12px; background: rgba(255,0,255,0.2); border: 1px solid #ff00ff; border-radius: 10px; color: #ff00ff; cursor: pointer; margin-top: 15px; }
+        .charts-container { display: grid; grid-template-columns: repeat(auto-fit,minmax(400px,1fr)); gap: 25px; margin-bottom: 30px; }
+        .chart-card { background: rgba(20,20,50,0.8); border: 1px solid #ff00ff33; border-radius: 16px; padding: 20px; }
+        .chart { width: 100%; height: 300px; }
+        .record-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: rgba(10,10,30,0.6); border: 1px solid #00ffff22; border-radius: 10px; margin-bottom: 12px; }
+        .btn-delete { padding: 8px 16px; background: rgba(255,50,50,0.2); border: 1px solid #ff3232; border-radius: 8px; color: #ff3232; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <canvas id="particles"></canvas>
+    <div class="container">
+        <h1>⚡ 赛博记账 ⚡</h1>
+        <div class="input-section">
+            <div class="input-row">
+                <div class="input-group"><input type="text" id="itemName" placeholder="项目名称"></div>
+                <div class="input-group"><input type="number" id="itemAmount" placeholder="金额" min="0.01" step="0.01"></div>
+                <div class="input-group"><select id="itemCategory"><option>学习</option><option>饮食</option><option>交通</option><option>娱乐</option><option>其他</option></select></div>
+            </div>
+            <button class="btn-add" onclick="addRecord()">添加记录</button>
+            <button class="btn-export" onclick="exportCSV()">导出报表</button>
+        </div>
+        <div class="charts-container">
+            <div class="chart-card"><div id="pie-chart" class="chart"></div></div>
+            <div class="chart-card"><div id="bar-chart" class="chart"></div></div>
+        </div>
+        <div id="recordsList"></div>
+    </div>
+    <script>
+        const CATS = {学习:'#00ffff', 饮食:'#ff00ff', 交通:'#ffff00', 娱乐:'#00ff00', 其他:'#ff8800'};
+        let records = JSON.parse(localStorage.getItem('cyberRecords')||'[]');
+        function initParticles() {
+            const c=document.getElementById('particles'), ctx=c.getContext('2d');
+            c.width=window.innerWidth; c.height=window.innerHeight;
+            const particles=Array.from({length:80},()=>({x:Math.random()*c.width,y:Math.random()*c.height,speedX:(Math.random()-0.5)*0.5,speedY:(Math.random()-0.5)*0.5,color:Math.random()>0.5?'#00ffff':'#ff00ff',alpha:Math.random()*0.5+0.1}));
+            function animate() {
+                ctx.clearRect(0,0,c.width,c.height);
+                particles.forEach(p=>{p.x+=p.speedX; p.y+=p.speedY; if(p.x<0||p.x>c.width||p.y<0||p.y>c.height){p.x=Math.random()*c.width;p.y=Math.random()*c.height}
+                ctx.beginPath(); ctx.arc(p.x,p.y,1.5,0,Math.PI*2); ctx.fillStyle=p.color; ctx.globalAlpha=p.alpha; ctx.fill();});
+                particles.forEach((p,i)=>particles.slice(i+1).forEach(q=>{const d=Math.hypot(p.x-q.x,p.y-q.y); if(d<120){ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y); ctx.strokeStyle=`rgba(0,255,255,${0.1*(1-d/120)})`; ctx.stroke();}}));
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
+        function updateCharts() {
+            const data={}; Object.keys(CATS).forEach(k=>data[k]=0);
+            records.forEach(r=>data[r.category]+=r.amount);
+            const pie=echarts.init(document.getElementById('pie-chart'));
+            pie.setOption({backgroundColor:'transparent',series:[{type:'pie',radius:['40%','70%'],data:Object.entries(data).filter(([,v])=>v>0).map(([k,v])=>({name:k,value:v}))}],color:Object.values(CATS)});
+            const bar=echarts.init(document.getElementById('bar-chart'));
+            bar.setOption({backgroundColor:'transparent',xAxis:{type:'category',data:Object.keys(data)},yAxis:{type:'value'},series:[{type:'bar',data:Object.values(data)}]});
+        }
+        function render() {
+            const list=document.getElementById('recordsList');
+            list.innerHTML=records.length?records.sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map(r=>`
+                <div class="record-item"><div>${r.name}<br>${r.category}</div><div>¥${r.amount.toFixed(2)}</div><button class="btn-delete" onclick="del(${r.id})">删除</button></div>
+            `).join(''):'暂无记录';
+        }
+        function addRecord() {
+            const name=document.getElementById('itemName').value, amount=parseFloat(document.getElementById('itemAmount').value), cat=document.getElementById('itemCategory').value;
+            if(!name||!amount)return;
+            records.push({id:Date.now(),name,amount,category:cat,timestamp:new Date().toISOString()});
+            localStorage.setItem('cyberRecords',JSON.stringify(records));
+            render(); updateCharts();
+            document.getElementById('itemName').value=''; document.getElementById('itemAmount').value='';
+        }
+        function del(id){records=records.filter(r=>r.id!==id); localStorage.setItem('cyberRecords',JSON.stringify(records)); render(); updateCharts();}
+        function exportCSV() {
+            const csv='项目,金额,类别\n'+records.map(r=>`${r.name},${r.amount},${r.category}`).join('\n');
+            const a=document.createElement('a'); a.href='data:text/csv,'+encodeURIComponent(csv); a.download='记账.csv'; a.click();
+        }
+        initParticles(); updateCharts(); render();
+    </script>
+</body>
+</html>
